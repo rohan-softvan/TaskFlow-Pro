@@ -66,16 +66,17 @@ model User {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  ownedProjects    Project[]
-  assignedTasks    Task[]           @relation("TaskAssignee")
-  createdTasks     Task[]           @relation("TaskCreator")
-  comments         TaskComment[]
-  attachments      TaskAttachment[]
-  activityLogs     ActivityLog[]
-  notifications    Notification[]
-  refreshTokens    RefreshToken[]
-  projectMembers   ProjectMember[]
-  commentMentions  CommentMention[]
+  ownedProjects        Project[]
+  assignedTasks        Task[]           @relation("TaskAssignee")
+  createdTasks         Task[]           @relation("TaskCreator")
+  comments             TaskComment[]
+  attachments          TaskAttachment[]
+  activityLogs         ActivityLog[]
+  notifications        Notification[]   @relation("NotificationRecipient")
+  notificationsAsActor Notification[]   @relation("NotificationActor")
+  refreshTokens        RefreshToken[]
+  projectMembers       ProjectMember[]
+  commentMentions      CommentMention[]
 
   @@map("users")
 }
@@ -205,7 +206,7 @@ model ActivityLog {
   project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   actor   User     @relation(fields: [actorId], references: [id])
 
-  @@index([taskId, createdAt(fields: ["created_at"], sort: Desc)])
+  @@index([taskId, createdAt(sort: Desc)])
   @@map("activity_log")
 }
 
@@ -220,12 +221,12 @@ model Notification {
   isRead       Boolean          @default(false) @map("is_read")
   createdAt    DateTime         @default(now()) @map("created_at")
 
-  recipient User    @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  recipient User    @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
   task      Task?   @relation(fields: [taskId], references: [id], onDelete: Cascade)
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   actor     User?   @relation("NotificationActor", fields: [actorId], references: [id])
 
-  @@index([recipientId, isRead, createdAt(fields: ["created_at"], sort: Desc)])
+  @@index([recipientId, isRead, createdAt(sort: Desc)])
   @@map("notifications")
 }
 
