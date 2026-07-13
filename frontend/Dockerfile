@@ -5,6 +5,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY tsconfig.json next.config.js postcss.config.js tailwind.config.js ./
 COPY src ./src
+RUN mkdir -p /app/public
 RUN npm run build
 
 # Production stage
