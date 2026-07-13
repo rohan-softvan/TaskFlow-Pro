@@ -61,6 +61,7 @@ model User {
   role          UserRole @default(Member)
   department    String?  @db.VarChar(80)
   avatarPath    String?  @map("avatar_path")
+  bio           String?  @db.Text
   isActive      Boolean  @default(true) @map("is_active")
   mustResetPw   Boolean  @default(false) @map("must_reset_pw")
   createdAt     DateTime @default(now()) @map("created_at")
