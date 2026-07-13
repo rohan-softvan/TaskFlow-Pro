@@ -8,34 +8,37 @@ import {
   useCallback,
   type ReactNode,
 } from 'react';
-import { authApi, setAccessToken, clearAccessToken } from '@/lib/api';
+import { authApi, setAccessToken, clearAccessToken, type UserRole } from '@/lib/api';
 
-interface AuthUser {
+export interface AuthUser {
   userId: string;
   email: string;
+  role: UserRole;
+  mustResetPw: boolean;
 }
 
 interface AuthContextValue {
   user: AuthUser | null;
   accessToken: string | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<{ mustResetPw: boolean }>;
   register: (
     email: string,
     password: string,
     fullName: string,
-  ) => Promise<void>;
+  ) => Promise<{ mustResetPw: boolean }>;
   logout: () => Promise<void>;
+  clearMustReset: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function decodeEmail(token: string): string {
+function decodeJwtPayload(token: string): { email: string; role: UserRole } {
   try {
     const payload = JSON.parse(atob(token.split('.')[1]));
-    return payload.email as string;
+    return { email: payload.email as string, role: payload.role as UserRole };
   } catch {
-    return '';
+    return { email: '', role: 'Member' };
   }
 }
 
@@ -51,7 +54,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then((data) => {
         setAccessToken(data.accessToken);
         setToken(data.accessToken);
-        setUser({ userId: data.userId, email: decodeEmail(data.accessToken) });
+        const { email, role } = decodeJwtPayload(data.accessToken);
+        setUser({ userId: data.userId, email, role, mustResetPw: data.mustResetPw });
       })
       .catch(() => {
         // No active session — that's fine
@@ -63,7 +67,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await authApi.login(email, password);
     setAccessToken(data.accessToken);
     setToken(data.accessToken);
-    setUser({ userId: data.userId, email });
+    setUser({ userId: data.userId, email, role: data.role, mustResetPw: data.mustResetPw });
+    return { mustResetPw: data.mustResetPw };
   }, []);
 
   const register = useCallback(
@@ -71,7 +76,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await authApi.register(email, password, fullName);
       setAccessToken(data.accessToken);
       setToken(data.accessToken);
-      setUser({ userId: data.userId, email });
+      setUser({ userId: data.userId, email, role: data.role, mustResetPw: data.mustResetPw });
+      return { mustResetPw: data.mustResetPw };
     },
     [],
   );
@@ -83,9 +89,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const clearMustReset = useCallback(() => {
+    setUser((prev) => (prev ? { ...prev, mustResetPw: false } : prev));
+  }, []);
+
   return (
     <AuthContext.Provider
-      value={{ user, accessToken, isLoading, login, register, logout }}
+      value={{ user, accessToken, isLoading, login, register, logout, clearMustReset }}
     >
       {children}
     </AuthContext.Provider>

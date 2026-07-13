@@ -5,6 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { Response } from 'express';
@@ -35,7 +36,13 @@ export class AuthService {
       data: { email: dto.email, passwordHash, fullName: dto.fullName },
     });
 
-    return this.issueTokens(user.id, user.email, res);
+    return this.issueTokens(
+      user.id,
+      user.email,
+      user.role,
+      user.mustResetPw,
+      res,
+    );
   }
 
   async login(dto: LoginDto, res: Response) {
@@ -49,7 +56,7 @@ export class AuthService {
 
     if (!user.isActive) throw new ForbiddenException('Account disabled');
 
-    return this.issueTokens(user.id, user.email, res);
+    return this.issueTokens(user.id, user.email, user.role, user.mustResetPw, res);
   }
 
   async refresh(rawToken: string | undefined, res: Response) {
@@ -70,7 +77,7 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
 
-    return this.issueTokens(stored.userId, stored.user.email, res);
+    return this.issueTokens(stored.userId, stored.user.email, stored.user.role, stored.user.mustResetPw, res);
   }
 
   async logout(rawToken: string | undefined, res: Response) {
@@ -85,9 +92,15 @@ export class AuthService {
     return { message: 'Logged out' };
   }
 
-  private async issueTokens(userId: string, email: string, res: Response) {
+  private async issueTokens(
+    userId: string,
+    email: string,
+    role: UserRole,
+    mustResetPw: boolean,
+    res: Response,
+  ) {
     const accessToken = this.jwt.sign(
-      { sub: userId, email },
+      { sub: userId, email, role },
       { expiresIn: ACCESS_TTL_S },
     );
 
@@ -107,7 +120,7 @@ export class AuthService {
       maxAge: REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000,
     });
 
-    return { accessToken, expiresIn: ACCESS_TTL_S, userId };
+    return { accessToken, expiresIn: ACCESS_TTL_S, userId, role, mustResetPw };
   }
 
   private hashToken(token: string): string {

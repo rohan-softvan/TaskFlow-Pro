@@ -75,11 +75,82 @@ async function parseJson<T>(res: Response): Promise<T> {
   return JSON.parse(text) as T;
 }
 
-interface TokenResponse {
+export type UserRole = 'Admin' | 'ProjectManager' | 'Member' | 'Viewer';
+
+export interface TokenResponse {
   accessToken: string;
   expiresIn: number;
   userId: string;
+  role: UserRole;
+  mustResetPw: boolean;
 }
+
+export interface UserRecord {
+  id: string;
+  email: string;
+  fullName: string;
+  role: UserRole;
+  department: string | null;
+  isActive: boolean;
+  mustResetPw: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateUserPayload {
+  email: string;
+  fullName: string;
+  role?: UserRole;
+  department?: string;
+}
+
+export interface UpdateUserPayload {
+  role?: UserRole;
+  isActive?: boolean;
+  department?: string;
+  fullName?: string;
+}
+
+export const usersApi = {
+  async list(): Promise<UserRecord[]> {
+    const res = await apiFetch('/users');
+    return parseJson<UserRecord[]>(res);
+  },
+
+  async create(payload: CreateUserPayload): Promise<UserRecord & { tempPassword: string }> {
+    const res = await apiFetch('/users', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return parseJson<UserRecord & { tempPassword: string }>(res);
+  },
+
+  async update(id: string, payload: UpdateUserPayload): Promise<UserRecord> {
+    const res = await apiFetch(`/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+    return parseJson<UserRecord>(res);
+  },
+
+  async deactivate(id: string): Promise<UserRecord> {
+    const res = await apiFetch(`/users/${id}/deactivate`, { method: 'PATCH' });
+    return parseJson<UserRecord>(res);
+  },
+
+  async resetPassword(id: string): Promise<{ tempPassword: string }> {
+    const res = await apiFetch(`/users/${id}/reset-password`, { method: 'POST' });
+    return parseJson<{ tempPassword: string }>(res);
+  },
+
+  async changePassword(newPassword: string): Promise<{ message: string }> {
+    const res = await apiFetch('/users/me/change-password', {
+      method: 'PATCH',
+      body: JSON.stringify({ newPassword }),
+    });
+    return parseJson<{ message: string }>(res);
+  },
+};
 
 export const authApi = {
   async register(

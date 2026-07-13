@@ -1,35 +1,44 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { z } from 'zod';
 import { useAuth } from '@/contexts/auth';
+import { usersApi } from '@/lib/api';
 
 const schema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(1, 'Password is required'),
+  newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+  confirm: z.string(),
+}).refine((d) => d.newPassword === d.confirm, {
+  message: 'Passwords do not match',
+  path: ['confirm'],
 });
 
-export default function LoginPage() {
-  const { login, user, isLoading } = useAuth();
+export default function ChangePasswordPage() {
+  const { user, isLoading, clearMustReset } = useAuth();
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && user) {
-      router.replace(user.mustResetPw ? '/change-password' : '/dashboard');
-    }
+    if (!isLoading && !user) router.replace('/login');
   }, [isLoading, user, router]);
+
+  if (isLoading || !user) {
+    return (
+      <main className="flex min-h-screen items-center justify-center">
+        <p className="text-gray-500">Loading…</p>
+      </main>
+    );
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
 
-    const result = schema.safeParse({ email, password });
+    const result = schema.safeParse({ newPassword, confirm });
     if (!result.success) {
       setError(result.error.errors[0].message);
       return;
@@ -37,10 +46,11 @@ export default function LoginPage() {
 
     setSubmitting(true);
     try {
-      const { mustResetPw } = await login(email, password);
-      router.push(mustResetPw ? '/change-password' : '/dashboard');
+      await usersApi.changePassword(newPassword);
+      clearMustReset();
+      router.push('/dashboard');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : 'Failed to change password');
     } finally {
       setSubmitting(false);
     }
@@ -49,9 +59,14 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm rounded-xl bg-white p-8 shadow-md">
-        <h1 className="mb-6 text-center text-2xl font-bold text-gray-900">
-          Sign in to TaskFlow
+        <h1 className="mb-2 text-center text-2xl font-bold text-gray-900">
+          Set New Password
         </h1>
+        {user.mustResetPw && (
+          <p className="mb-5 text-center text-sm text-amber-600">
+            You must set a new password before continuing.
+          </p>
+        )}
 
         {error && (
           <div className="mb-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -62,36 +77,36 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label
-              htmlFor="email"
+              htmlFor="newPassword"
               className="mb-1 block text-sm font-medium text-gray-700"
             >
-              Email
+              New Password
             </label>
             <input
-              id="email"
-              type="email"
-              autoComplete="email"
+              id="newPassword"
+              type="password"
+              autoComplete="new-password"
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
             />
           </div>
 
           <div>
             <label
-              htmlFor="password"
+              htmlFor="confirm"
               className="mb-1 block text-sm font-medium text-gray-700"
             >
-              Password
+              Confirm Password
             </label>
             <input
-              id="password"
+              id="confirm"
               type="password"
-              autoComplete="current-password"
+              autoComplete="new-password"
               required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
             />
           </div>
@@ -101,16 +116,9 @@ export default function LoginPage() {
             disabled={submitting}
             className="w-full rounded-md bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {submitting ? 'Signing in…' : 'Sign in'}
+            {submitting ? 'Updating…' : 'Update Password'}
           </button>
         </form>
-
-        <p className="mt-6 text-center text-sm text-gray-500">
-          No account?{' '}
-          <Link href="/register" className="text-blue-600 hover:underline">
-            Register
-          </Link>
-        </p>
       </div>
     </main>
   );

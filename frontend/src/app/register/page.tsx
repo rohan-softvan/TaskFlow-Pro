@@ -25,7 +25,9 @@ export default function RegisterPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && user) router.replace('/dashboard');
+    if (!isLoading && user) {
+      router.replace(user.mustResetPw ? '/change-password' : '/dashboard');
+    }
   }, [isLoading, user, router]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -40,8 +42,8 @@ export default function RegisterPage() {
 
     setSubmitting(true);
     try {
-      await register(email, password, fullName);
-      router.push('/dashboard');
+      const { mustResetPw } = await register(email, password, fullName);
+      router.push(mustResetPw ? '/change-password' : '/dashboard');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {

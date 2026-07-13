@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth';
 
@@ -10,6 +11,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!isLoading && !user) router.replace('/login');
+    if (!isLoading && user?.mustResetPw) router.replace('/change-password');
   }, [isLoading, user, router]);
 
   if (isLoading) {
@@ -50,7 +52,20 @@ export default function DashboardPage() {
           <p className="mt-2 text-sm text-gray-500">
             Your projects and tasks will appear here in a future slice.
           </p>
+          <p className="mt-1 text-xs text-gray-400">Role: {user.role}</p>
         </div>
+
+        {user.role === 'Admin' && (
+          <div className="mt-4 rounded-xl bg-white p-6 shadow-md">
+            <h2 className="text-lg font-semibold text-gray-800">Admin</h2>
+            <Link
+              href="/admin/users"
+              className="mt-2 inline-block text-sm text-blue-600 hover:underline"
+            >
+              Manage Users →
+            </Link>
+          </div>
+        )}
       </div>
     </main>
   );
