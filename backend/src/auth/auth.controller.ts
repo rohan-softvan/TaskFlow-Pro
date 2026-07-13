@@ -1,12 +1,14 @@
-import { Body, Controller, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { AuthRateLimitGuard } from '../common/auth-rate-limit.guard';
 
 @ApiTags('auth')
 @Controller('auth')
+@UseGuards(AuthRateLimitGuard)
 export class AuthController {
   constructor(private auth: AuthService) {}
 

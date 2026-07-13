@@ -2,14 +2,23 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import * as cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { LoggerService } from './common/logger.service';
+import { AuthRateLimitGuard } from './common/auth-rate-limit.guard';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+  });
+
+  app.useLogger(app.get(LoggerService));
 
   app.setGlobalPrefix('api');
 
   app.use(cookieParser());
+
+  app.use(helmet());
 
   app.enableCors({
     origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
@@ -34,6 +43,7 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  await app.listen(3001);
+  const port = process.env.PORT || 3001;
+  await app.listen(port);
 }
 bootstrap();

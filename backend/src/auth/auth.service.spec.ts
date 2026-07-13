@@ -42,7 +42,7 @@ describe('AuthService (ADLAAAA-21)', () => {
       create: jest.fn(({ data }: any) => {
         const user = {
           id: `user-${idSeq++}`,
-          role: UserRole.MEMBER,
+          role: UserRole.Member,
           isActive: true,
           mustResetPw: false,
           ...data,
