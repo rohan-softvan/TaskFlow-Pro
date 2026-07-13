@@ -152,6 +152,66 @@ export const usersApi = {
   },
 };
 
+export interface ProfileRecord {
+  id: string;
+  email: string;
+  fullName: string;
+  role: UserRole;
+  department: string | null;
+  bio: string | null;
+  avatarPath: string | null;
+  isActive: boolean;
+  mustResetPw: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateProfilePayload {
+  fullName?: string;
+  department?: string;
+  bio?: string;
+}
+
+export const profileApi = {
+  async getMe(): Promise<ProfileRecord> {
+    const res = await apiFetch('/users/me');
+    return parseJson<ProfileRecord>(res);
+  },
+
+  async update(payload: UpdateProfilePayload): Promise<ProfileRecord> {
+    const res = await apiFetch('/users/me', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+    return parseJson<ProfileRecord>(res);
+  },
+
+  async uploadAvatar(file: File): Promise<ProfileRecord> {
+    await ensureFreshToken();
+    const form = new FormData();
+    form.append('file', file);
+    // NOTE: do NOT set Content-Type — the browser adds the multipart boundary.
+    const headers: Record<string, string> = {};
+    const token = getAccessToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`${BASE}/users/me/avatar`, {
+      method: 'POST',
+      body: form,
+      headers,
+      credentials: 'include',
+    });
+    return parseJson<ProfileRecord>(res);
+  },
+
+  // Fetches the current user's avatar as a Blob (auth'd route). null if none.
+  async fetchAvatarBlob(): Promise<Blob | null> {
+    const res = await apiFetch('/users/me/avatar');
+    if (!res.ok) return null;
+    return res.blob();
+  },
+};
+
 export const authApi = {
   async register(
     email: string,
@@ -190,5 +250,121 @@ export const authApi = {
       method: 'POST',
       credentials: 'include',
     });
+  },
+};
+
+export type ProjectStatus = 'Planning' | 'Active' | 'OnHold' | 'Completed';
+
+export interface ProjectOwner {
+  id: string;
+  fullName: string;
+  email: string;
+  avatarPath: string | null;
+}
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  status: ProjectStatus;
+  ownerId: string;
+  startDate: string | null;
+  endDate: string | null;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+  owner: ProjectOwner;
+  progress: number;
+  _count: { tasks: number };
+}
+
+export interface ProjectMemberRecord {
+  projectId: string;
+  userId: string;
+  addedAt: string;
+  user: {
+    id: string;
+    fullName: string;
+    email: string;
+    role: UserRole;
+    department: string | null;
+    avatarPath: string | null;
+  };
+}
+
+export interface ProjectDetail extends ProjectSummary {
+  members: ProjectMemberRecord[];
+}
+
+export interface CreateProjectPayload {
+  name: string;
+  description?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+export type UpdateProjectPayload = Partial<CreateProjectPayload>;
+
+export const projectsApi = {
+  async list(archived = false): Promise<ProjectSummary[]> {
+    const res = await apiFetch(`/projects${archived ? '?archived=true' : ''}`);
+    return parseJson<ProjectSummary[]>(res);
+  },
+
+  async get(id: string): Promise<ProjectDetail> {
+    const res = await apiFetch(`/projects/${id}`);
+    return parseJson<ProjectDetail>(res);
+  },
+
+  async create(payload: CreateProjectPayload): Promise<ProjectSummary> {
+    const res = await apiFetch('/projects', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return parseJson<ProjectSummary>(res);
+  },
+
+  async update(id: string, payload: UpdateProjectPayload): Promise<ProjectSummary> {
+    const res = await apiFetch(`/projects/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+    return parseJson<ProjectSummary>(res);
+  },
+
+  async changeStatus(id: string, status: ProjectStatus): Promise<ProjectSummary> {
+    const res = await apiFetch(`/projects/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+    return parseJson<ProjectSummary>(res);
+  },
+
+  async setArchived(id: string, archive: boolean): Promise<ProjectSummary> {
+    const res = await apiFetch(`/projects/${id}/archive`, {
+      method: 'PATCH',
+      body: JSON.stringify({ archive }),
+    });
+    return parseJson<ProjectSummary>(res);
+  },
+
+  async members(id: string): Promise<ProjectMemberRecord[]> {
+    const res = await apiFetch(`/projects/${id}/members`);
+    return parseJson<ProjectMemberRecord[]>(res);
+  },
+
+  async addMember(id: string, userId: string): Promise<ProjectMemberRecord> {
+    const res = await apiFetch(`/projects/${id}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
+    return parseJson<ProjectMemberRecord>(res);
+  },
+
+  async removeMember(id: string, userId: string): Promise<void> {
+    const res = await apiFetch(`/projects/${id}/members/${userId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) await parseJson(res);
   },
 };
