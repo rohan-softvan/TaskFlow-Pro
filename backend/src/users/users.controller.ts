@@ -24,7 +24,9 @@ import { diskStorage } from 'multer';
 import * as path from 'path';
 import { MulterExceptionFilter } from '../common/multer-exception.filter';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { SkipMustResetPassword } from '../auth/decorators/skip-must-reset-password.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { MustResetPasswordGuard } from '../auth/guards/must-reset-password.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -44,7 +46,7 @@ const uploadStorage = diskStorage({
 
 @ApiTags('users')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, MustResetPasswordGuard)
 @Controller('users')
 export class UsersController {
   constructor(private users: UsersService) {}
@@ -119,6 +121,7 @@ export class UsersController {
   }
 
   @Patch('me/change-password')
+  @SkipMustResetPassword()
   @ApiOperation({ summary: 'Change own password — clears must_reset_pw' })
   changePassword(@Req() req: AuthRequest, @Body() dto: ChangePasswordDto) {
     return this.users.changePassword(req.user.id, dto);
