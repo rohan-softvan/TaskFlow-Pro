@@ -484,6 +484,91 @@ export const tasksApi = {
   },
 };
 
+export interface SubtaskSummary {
+  id: string;
+  projectId: string;
+  parentTaskId: string;
+  title: string;
+  description: string | null;
+  assigneeId: string | null;
+  dueDate: string | null;
+  priority: TaskPriority;
+  status: TaskStatus;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  assignee: TaskUser | null;
+  creator: TaskUser;
+}
+
+export interface CreateSubtaskPayload {
+  title: string;
+  description?: string;
+  assigneeId?: string;
+  dueDate?: string;
+  priority?: TaskPriority;
+}
+
+export interface CommentMentionRecord {
+  commentId: string;
+  mentionedUser: string;
+  user: TaskUser;
+}
+
+export interface TaskCommentRecord {
+  id: string;
+  taskId: string;
+  authorId: string;
+  body: string;
+  createdAt: string;
+  author: TaskUser;
+  mentions: CommentMentionRecord[];
+}
+
+export const subtasksApi = {
+  async list(projectId: string, taskId: string): Promise<SubtaskSummary[]> {
+    const res = await apiFetch(`/projects/${projectId}/tasks/${taskId}/subtasks`);
+    return parseJson<SubtaskSummary[]>(res);
+  },
+
+  async create(projectId: string, taskId: string, payload: CreateSubtaskPayload): Promise<SubtaskSummary> {
+    const res = await apiFetch(`/projects/${projectId}/tasks/${taskId}/subtasks`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return parseJson<SubtaskSummary>(res);
+  },
+
+  async remove(projectId: string, taskId: string): Promise<void> {
+    const res = await apiFetch(`/projects/${projectId}/tasks/${taskId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) await parseJson(res);
+  },
+};
+
+export const commentsApi = {
+  async list(projectId: string, taskId: string): Promise<TaskCommentRecord[]> {
+    const res = await apiFetch(`/projects/${projectId}/tasks/${taskId}/comments`);
+    return parseJson<TaskCommentRecord[]>(res);
+  },
+
+  async create(projectId: string, taskId: string, body: string): Promise<TaskCommentRecord> {
+    const res = await apiFetch(`/projects/${projectId}/tasks/${taskId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    });
+    return parseJson<TaskCommentRecord>(res);
+  },
+
+  async remove(projectId: string, taskId: string, commentId: string): Promise<void> {
+    const res = await apiFetch(`/projects/${projectId}/tasks/${taskId}/comments/${commentId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) await parseJson(res);
+  },
+};
+
 export const attachmentsApi = {
   async list(taskId: string): Promise<TaskAttachmentRecord[]> {
     const res = await apiFetch(`/tasks/${taskId}/attachments`);

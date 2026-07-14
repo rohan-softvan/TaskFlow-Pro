@@ -7,11 +7,15 @@ import {
   projectsApi,
   tasksApi,
   attachmentsApi,
+  subtasksApi,
+  commentsApi,
   type ProjectMemberRecord,
   type TaskDetail,
   type TaskAttachmentRecord,
   type TaskPriority,
   type TaskStatus,
+  type SubtaskSummary,
+  type TaskCommentRecord,
 } from '@/lib/api';
 
 const TASK_STATUS_OPTIONS: TaskStatus[] = ['ToDo', 'InProgress', 'InReview', 'Done'];
@@ -55,11 +59,25 @@ export default function TaskDetailPage() {
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [members, setMembers] = useState<ProjectMemberRecord[]>([]);
   const [attachments, setAttachments] = useState<TaskAttachmentRecord[]>([]);
+  const [subtasks, setSubtasks] = useState<SubtaskSummary[]>([]);
+  const [comments, setComments] = useState<TaskCommentRecord[]>([]);
   const [fetchError, setFetchError] = useState('');
   const [actionMsg, setActionMsg] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+
+  // Subtask form
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const [addingSubtask, setAddingSubtask] = useState(false);
+  const [subtaskError, setSubtaskError] = useState('');
+
+  // Comment form
+  const [commentBody, setCommentBody] = useState('');
+  const [postingComment, setPostingComment] = useState(false);
+  const [commentError, setCommentError] = useState('');
+  const [mentionSuggestions, setMentionSuggestions] = useState<ProjectMemberRecord[]>([]);
+  const [mentionQuery, setMentionQuery] = useState('');
 
   // Edit fields
   const [editTitle, setEditTitle] = useState('');
@@ -75,14 +93,18 @@ export default function TaskDetailPage() {
 
   const load = useCallback(async () => {
     try {
-      const [t, mems, atts] = await Promise.all([
+      const [t, mems, atts, subs, cmts] = await Promise.all([
         tasksApi.get(projectId, taskId),
         projectsApi.members(projectId).catch(() => [] as ProjectMemberRecord[]),
         attachmentsApi.list(taskId).catch(() => [] as TaskAttachmentRecord[]),
+        subtasksApi.list(projectId, taskId).catch(() => [] as SubtaskSummary[]),
+        commentsApi.list(projectId, taskId).catch(() => [] as TaskCommentRecord[]),
       ]);
       setTask(t);
       setMembers(mems);
       setAttachments(atts);
+      setSubtasks(subs);
+      setComments(cmts);
       setEditTitle(t.title);
       setEditStatus(t.status);
       setEditPriority(t.priority);
@@ -144,6 +166,89 @@ export default function TaskDetailPage() {
     } catch (e: unknown) {
       setActionMsg(e instanceof Error ? e.message : 'Failed to delete attachment');
     }
+  }
+
+  async function handleAddSubtask(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newSubtaskTitle.trim()) return;
+    setAddingSubtask(true);
+    setSubtaskError('');
+    try {
+      await subtasksApi.create(projectId, taskId, { title: newSubtaskTitle.trim() });
+      setNewSubtaskTitle('');
+      await load();
+    } catch (e: unknown) {
+      setSubtaskError(e instanceof Error ? e.message : 'Failed to add subtask');
+    } finally {
+      setAddingSubtask(false);
+    }
+  }
+
+  async function handleDeleteSubtask(subtaskId: string) {
+    try {
+      await subtasksApi.remove(projectId, subtaskId);
+      await load();
+    } catch (e: unknown) {
+      setActionMsg(e instanceof Error ? e.message : 'Failed to delete subtask');
+    }
+  }
+
+  async function handlePostComment(e: React.FormEvent) {
+    e.preventDefault();
+    if (!commentBody.trim()) return;
+    setPostingComment(true);
+    setCommentError('');
+    try {
+      await commentsApi.create(projectId, taskId, commentBody.trim());
+      setCommentBody('');
+      setMentionSuggestions([]);
+      await load();
+    } catch (e: unknown) {
+      setCommentError(e instanceof Error ? e.message : 'Failed to post comment');
+    } finally {
+      setPostingComment(false);
+    }
+  }
+
+  async function handleDeleteComment(commentId: string) {
+    try {
+      await commentsApi.remove(projectId, taskId, commentId);
+      await load();
+    } catch (e: unknown) {
+      setActionMsg(e instanceof Error ? e.message : 'Failed to delete comment');
+    }
+  }
+
+  function handleCommentInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const val = e.target.value;
+    setCommentBody(val);
+
+    // Detect @mention trigger: find the last @ in the current cursor position
+    const cursorPos = e.target.selectionStart ?? val.length;
+    const textUpToCursor = val.slice(0, cursorPos);
+    const mentionMatch = textUpToCursor.match(/@([\w.]*)$/);
+    if (mentionMatch) {
+      const query = mentionMatch[1].toLowerCase();
+      setMentionQuery(query);
+      const filtered = members.filter(
+        (m) =>
+          m.user.fullName.toLowerCase().includes(query) ||
+          m.user.email.toLowerCase().includes(query),
+      );
+      setMentionSuggestions(filtered.slice(0, 6));
+    } else {
+      setMentionSuggestions([]);
+      setMentionQuery('');
+    }
+  }
+
+  function insertMention(member: ProjectMemberRecord) {
+    const emailLocal = member.user.email.split('@')[0];
+    // Replace the trailing @query with @emailLocal
+    const replaced = commentBody.replace(/@([\w.]*)$/, `@${emailLocal} `);
+    setCommentBody(replaced);
+    setMentionSuggestions([]);
+    setMentionQuery('');
   }
 
   function formatFileSize(bytes: number): string {
@@ -373,6 +478,145 @@ export default function TaskDetailPage() {
               })}
             </ul>
           )}
+        </div>
+
+        {/* Subtasks */}
+        <div className="mt-6 rounded-xl bg-white p-6 shadow-md">
+          <h2 className="mb-4 text-lg font-semibold text-gray-800">
+            Subtasks ({subtasks.length})
+          </h2>
+
+          {subtasks.length === 0 ? (
+            <p className="text-sm text-gray-400">No subtasks yet.</p>
+          ) : (
+            <ul className="mb-4 divide-y divide-gray-100">
+              {subtasks.map((s) => (
+                <li key={s.id} className="flex items-center gap-3 py-2">
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[s.status]}`}
+                  >
+                    {statusLabel(s.status)}
+                  </span>
+                  <span className="flex-1 text-sm text-gray-800">{s.title}</span>
+                  {s.assignee && (
+                    <span className="text-xs text-gray-400">{s.assignee.fullName}</span>
+                  )}
+                  {canEdit && (
+                    <button
+                      onClick={() => handleDeleteSubtask(s.id)}
+                      className="shrink-0 text-xs text-red-500 hover:text-red-700"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {subtaskError && (
+            <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+              {subtaskError}
+            </div>
+          )}
+
+          {canEdit && (
+            <form onSubmit={handleAddSubtask} className="flex gap-2">
+              <input
+                type="text"
+                value={newSubtaskTitle}
+                onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                placeholder="Add subtask…"
+                className="flex-1 rounded border border-gray-300 px-3 py-1.5 text-sm outline-none focus:border-blue-500"
+              />
+              <button
+                type="submit"
+                disabled={addingSubtask || !newSubtaskTitle.trim()}
+                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {addingSubtask ? 'Adding…' : 'Add'}
+              </button>
+            </form>
+          )}
+        </div>
+
+        {/* Comments */}
+        <div className="mt-6 rounded-xl bg-white p-6 shadow-md">
+          <h2 className="mb-4 text-lg font-semibold text-gray-800">
+            Comments ({comments.length})
+          </h2>
+
+          {comments.length === 0 ? (
+            <p className="mb-4 text-sm text-gray-400">No comments yet.</p>
+          ) : (
+            <ul className="mb-4 space-y-4">
+              {comments.map((c) => (
+                <li key={c.id} className="flex gap-3">
+                  <div className="mt-0.5 h-7 w-7 shrink-0 rounded-full bg-blue-100 flex items-center justify-center text-xs font-semibold text-blue-700 uppercase">
+                    {c.author.fullName.charAt(0)}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-medium text-gray-900">{c.author.fullName}</span>
+                      <span className="text-xs text-gray-400">
+                        {new Date(c.createdAt).toLocaleString()}
+                      </span>
+                      {(c.authorId === user.id || user.role === 'Admin' || user.role === 'ProjectManager') && (
+                        <button
+                          onClick={() => handleDeleteComment(c.id)}
+                          className="ml-auto text-xs text-red-500 hover:text-red-700"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">{c.body}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {commentError && (
+            <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+              {commentError}
+            </div>
+          )}
+
+          <form onSubmit={handlePostComment} className="relative">
+            <textarea
+              rows={3}
+              value={commentBody}
+              onChange={handleCommentInput}
+              placeholder="Write a comment… use @name to mention"
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+            />
+            {mentionSuggestions.length > 0 && (
+              <ul className="absolute z-10 mt-1 w-64 rounded border border-gray-200 bg-white shadow-lg">
+                {mentionSuggestions.map((m) => (
+                  <li key={m.userId}>
+                    <button
+                      type="button"
+                      onClick={() => insertMention(m)}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-blue-50"
+                    >
+                      <span className="font-medium">{m.user.fullName}</span>{' '}
+                      <span className="text-gray-400 text-xs">{m.user.email}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-2 flex justify-end">
+              <button
+                type="submit"
+                disabled={postingComment || !commentBody.trim()}
+                className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {postingComment ? 'Posting…' : 'Post Comment'}
+              </button>
+            </div>
+          </form>
         </div>
 
         {/* Activity Log */}

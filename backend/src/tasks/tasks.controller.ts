@@ -13,6 +13,8 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CreateCommentDto } from './dto/create-comment.dto';
+import { CreateSubtaskDto } from './dto/create-subtask.dto';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { TaskProjectMemberGuard } from './guards/task-project-member.guard';
@@ -68,5 +70,55 @@ export class TasksController {
   @ApiOperation({ summary: 'Delete a task' })
   remove(@Req() req: AuthRequest, @Param('taskId') taskId: string) {
     return this.tasks.remove(taskId, req.user.id, req.user.role);
+  }
+
+  // --- Subtasks ---
+
+  @Get(':taskId/subtasks')
+  @UseGuards(TaskProjectMemberGuard)
+  @ApiOperation({ summary: 'List subtasks of a task' })
+  listSubtasks(@Param('taskId') taskId: string) {
+    return this.tasks.listSubtasks(taskId);
+  }
+
+  @Post(':taskId/subtasks')
+  @UseGuards(TaskProjectMemberGuard)
+  @ApiOperation({ summary: 'Create a subtask (one level only)' })
+  createSubtask(
+    @Req() req: AuthRequest,
+    @Param('taskId') taskId: string,
+    @Body() dto: CreateSubtaskDto,
+  ) {
+    return this.tasks.createSubtask(taskId, req.user.id, dto);
+  }
+
+  // --- Comments ---
+
+  @Get(':taskId/comments')
+  @UseGuards(TaskProjectMemberGuard)
+  @ApiOperation({ summary: 'List comments on a task' })
+  listComments(@Param('taskId') taskId: string) {
+    return this.tasks.listComments(taskId);
+  }
+
+  @Post(':taskId/comments')
+  @UseGuards(TaskProjectMemberGuard)
+  @ApiOperation({ summary: 'Post a comment on a task' })
+  createComment(
+    @Req() req: AuthRequest,
+    @Param('taskId') taskId: string,
+    @Body() dto: CreateCommentDto,
+  ) {
+    return this.tasks.createComment(taskId, req.user.id, dto);
+  }
+
+  @Delete(':taskId/comments/:commentId')
+  @UseGuards(TaskProjectMemberGuard)
+  @ApiOperation({ summary: 'Delete a comment' })
+  deleteComment(
+    @Req() req: AuthRequest,
+    @Param('commentId') commentId: string,
+  ) {
+    return this.tasks.deleteComment(commentId, req.user.id, req.user.role);
   }
 }

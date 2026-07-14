@@ -198,4 +198,30 @@ describe('RBAC & Admin User Management (e2e) — ADLAAAA-22', () => {
     const reLogin = await loginAs(memberEmail, resetRes.body.tempPassword);
     expect(reLogin.mustResetPw).toBe(true);
   });
+
+  // ── Avatar upload tests (ADLAAAA-23 DoD) ──────────────────────────────────
+
+  it('Member can upload avatar ≤2MB', async () => {
+    // 1KB valid PNG header + filler — multer only checks Content-Type for size limits
+    const smallBuf = Buffer.alloc(1024, 0);
+    const res = await request(app.getHttpServer())
+      .post('/api/users/me/avatar')
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .attach('file', smallBuf, { filename: 'avatar.png', contentType: 'image/png' })
+      .expect(201);
+
+    expect(res.body.id).toBeDefined();
+    expect(res.body.avatarPath).toBeTruthy();
+  });
+
+  it('Member avatar upload >2MB is rejected (413)', async () => {
+    const tooBig = Buffer.alloc(2 * 1024 * 1024 + 1, 0);
+    await request(app.getHttpServer())
+      .post('/api/users/me/avatar')
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .attach('file', tooBig, { filename: 'big.png', contentType: 'image/png' })
+      .expect((res) => {
+        expect([400, 413]).toContain(res.status);
+      });
+  });
 });
