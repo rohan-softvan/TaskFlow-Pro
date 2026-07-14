@@ -1,12 +1,20 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { ActivityAction, TaskStatus, UserRole } from '@prisma/client';
+import { EventEmitter } from 'events';
 import { PrismaService } from '../prisma';
+import { CreateCommentDto } from './dto/create-comment.dto';
+import { CreateSubtaskDto } from './dto/create-subtask.dto';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
+
+// Simple in-process event bus for CommentMention events (consumed by Slice 9)
+export const taskEvents = new EventEmitter();
+export const COMMENT_MENTION_EVENT = 'CommentMention';
 
 const TASK_USER_SELECT = {
   id: true,
@@ -185,5 +193,170 @@ export class TasksService {
     }
 
     return this.prisma.task.delete({ where: { id: taskId } });
+  }
+
+  // --- Subtasks ---
+
+  async listSubtasks(parentTaskId: string) {
+    return this.prisma.task.findMany({
+      where: { parentTaskId },
+      include: {
+        assignee: { select: TASK_USER_SELECT },
+        creator: { select: TASK_USER_SELECT },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async createSubtask(
+    parentTaskId: string,
+    actorId: string,
+    dto: CreateSubtaskDto,
+  ) {
+    const parent = await this.prisma.task.findUnique({
+      where: { id: parentTaskId },
+    });
+    if (!parent) throw new NotFoundException('Parent task not found');
+    if (parent.parentTaskId) {
+      throw new BadRequestException(
+        'Cannot create a subtask of a subtask (max one level of nesting)',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const subtask = await tx.task.create({
+        data: {
+          projectId: parent.projectId,
+          parentTaskId,
+          title: dto.title,
+          description: dto.description,
+          assigneeId: dto.assigneeId ?? null,
+          dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+          priority: dto.priority ?? parent.priority,
+          createdBy: actorId,
+        },
+        include: {
+          assignee: { select: TASK_USER_SELECT },
+          creator: { select: TASK_USER_SELECT },
+        },
+      });
+
+      await tx.activityLog.create({
+        data: {
+          taskId: parentTaskId,
+          projectId: parent.projectId,
+          actorId,
+          action: ActivityAction.TaskCreated,
+          detail: { subtaskId: subtask.id, title: subtask.title },
+        },
+      });
+
+      return subtask;
+    });
+  }
+
+  // --- Comments ---
+
+  async listComments(taskId: string) {
+    return this.prisma.taskComment.findMany({
+      where: { taskId },
+      include: {
+        author: { select: TASK_USER_SELECT },
+        mentions: {
+          include: { user: { select: TASK_USER_SELECT } },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async createComment(taskId: string, actorId: string, dto: CreateCommentDto) {
+    const task = await this.prisma.task.findUnique({ where: { id: taskId } });
+    if (!task) throw new NotFoundException('Task not found');
+
+    // Parse @mentions: match @username patterns (word chars, dots, hyphens)
+    const mentionHandles = [
+      ...new Set(
+        [...dto.body.matchAll(/@([\w.\-]+)/g)].map((m) => m[1].toLowerCase()),
+      ),
+    ];
+
+    return this.prisma.$transaction(async (tx) => {
+      const comment = await tx.taskComment.create({
+        data: {
+          taskId,
+          authorId: actorId,
+          body: dto.body,
+        },
+        include: {
+          author: { select: TASK_USER_SELECT },
+        },
+      });
+
+      // Resolve mentioned users by email prefix or fullName (match on email localpart)
+      if (mentionHandles.length > 0) {
+        const mentionedUsers = await tx.user.findMany({
+          where: {
+            OR: mentionHandles.map((h) => ({
+              email: { startsWith: h, mode: 'insensitive' as const },
+            })),
+          },
+          select: { id: true, email: true, fullName: true },
+        });
+
+        if (mentionedUsers.length > 0) {
+          await tx.commentMention.createMany({
+            data: mentionedUsers.map((u) => ({
+              commentId: comment.id,
+              mentionedUser: u.id,
+            })),
+            skipDuplicates: true,
+          });
+
+          // Emit event for each mention (Slice 9 will subscribe)
+          for (const u of mentionedUsers) {
+            taskEvents.emit(COMMENT_MENTION_EVENT, {
+              commentId: comment.id,
+              taskId,
+              projectId: task.projectId,
+              actorId,
+              mentionedUserId: u.id,
+            });
+          }
+        }
+      }
+
+      await tx.activityLog.create({
+        data: {
+          taskId,
+          projectId: task.projectId,
+          actorId,
+          action: ActivityAction.CommentAdded,
+          detail: { commentId: comment.id },
+        },
+      });
+
+      return comment;
+    });
+  }
+
+  async deleteComment(
+    commentId: string,
+    actorId: string,
+    actorRole: UserRole,
+  ) {
+    const comment = await this.prisma.taskComment.findUnique({
+      where: { id: commentId },
+    });
+    if (!comment) throw new NotFoundException('Comment not found');
+
+    if (
+      actorRole === UserRole.Member &&
+      comment.authorId !== actorId
+    ) {
+      throw new ForbiddenException('You can only delete your own comments');
+    }
+
+    return this.prisma.taskComment.delete({ where: { id: commentId } });
   }
 }
