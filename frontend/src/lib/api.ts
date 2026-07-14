@@ -519,3 +519,47 @@ export const attachmentsApi = {
     if (!res.ok) await parseJson(res);
   },
 };
+
+export interface DashboardSummaryCards {
+  activeProjects: number;
+  overdueTasks: number;
+  completedThisWeek: number;
+}
+
+export interface ProjectHealthEntry {
+  id: string;
+  name: string;
+  status: string;
+  owner: { id: string; fullName: string; email: string } | null;
+  totalTasks: number;
+  overdueTasks: number;
+  rag: 'Green' | 'Amber' | 'Red';
+}
+
+export interface WorkloadBarEntry {
+  assigneeId: string;
+  assigneeName: string;
+  openTasks: number;
+}
+
+export interface ExecutiveDashboardResponse {
+  summaryCards: DashboardSummaryCards;
+  projectHealth: ProjectHealthEntry[];
+  workloadBars: WorkloadBarEntry[];
+}
+
+export const dashboardApi = {
+  async getExecutive(params?: {
+    department?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }): Promise<ExecutiveDashboardResponse> {
+    const qs = new URLSearchParams();
+    if (params?.department) qs.set('department', params.department);
+    if (params?.dateFrom) qs.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) qs.set('dateTo', params.dateTo);
+    const query = qs.toString();
+    const res = await apiFetch(`/dashboard/executive${query ? `?${query}` : ''}`);
+    return parseJson<ExecutiveDashboardResponse>(res);
+  },
+};

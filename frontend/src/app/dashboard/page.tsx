@@ -13,6 +13,9 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!isLoading && !user) router.replace('/login');
     if (!isLoading && user?.mustResetPw) router.replace('/change-password');
+    if (!isLoading && user && (user.role === 'Admin' || user.role === 'ProjectManager')) {
+      router.replace('/dashboard/executive');
+    }
   }, [isLoading, user, router]);
 
   if (isLoading) {

@@ -42,9 +42,35 @@ export function AppHeader() {
 
   return (
     <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3">
-      <Link href="/dashboard" className="text-lg font-bold text-gray-900">
-        TaskFlow Pro
-      </Link>
+      <div className="flex items-center gap-6">
+        <Link href="/dashboard" className="text-lg font-bold text-gray-900">
+          TaskFlow Pro
+        </Link>
+        <nav className="hidden items-center gap-4 sm:flex">
+          {(user?.role === 'Admin' || user?.role === 'ProjectManager') && (
+            <Link
+              href="/dashboard/executive"
+              className="text-sm text-gray-600 hover:text-gray-900"
+            >
+              Dashboard
+            </Link>
+          )}
+          <Link
+            href="/projects"
+            className="text-sm text-gray-600 hover:text-gray-900"
+          >
+            Projects
+          </Link>
+          {user?.role === 'Admin' && (
+            <Link
+              href="/admin/users"
+              className="text-sm text-gray-600 hover:text-gray-900"
+            >
+              Admin
+            </Link>
+          )}
+        </nav>
+      </div>
 
       <div className="relative" ref={menuRef}>
         <button
