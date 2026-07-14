@@ -368,3 +368,106 @@ export const projectsApi = {
     if (!res.ok) await parseJson(res);
   },
 };
+
+export type TaskStatus = 'ToDo' | 'InProgress' | 'InReview' | 'Done';
+export type TaskPriority = 'Low' | 'Medium' | 'High' | 'Critical';
+export type ActivityAction =
+  | 'StatusChanged'
+  | 'AssigneeChanged'
+  | 'CommentAdded'
+  | 'AttachmentAdded'
+  | 'DueDateChanged'
+  | 'TaskCreated'
+  | 'TaskDeleted';
+
+export interface TaskUser {
+  id: string;
+  fullName: string;
+  email: string;
+  avatarPath: string | null;
+}
+
+export interface ActivityLogEntry {
+  id: string;
+  taskId: string | null;
+  projectId: string | null;
+  actorId: string;
+  action: ActivityAction;
+  detail: Record<string, unknown> | null;
+  createdAt: string;
+  actor: TaskUser;
+}
+
+export interface TaskSummary {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string | null;
+  assigneeId: string | null;
+  dueDate: string | null;
+  priority: TaskPriority;
+  status: TaskStatus;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  assignee: TaskUser | null;
+  creator: TaskUser;
+  _count: { subtasks: number };
+}
+
+export interface TaskDetail extends Omit<TaskSummary, '_count'> {
+  activityLogs: ActivityLogEntry[];
+}
+
+export interface CreateTaskPayload {
+  title: string;
+  description?: string;
+  assigneeId?: string;
+  dueDate?: string;
+  priority?: TaskPriority;
+  status?: TaskStatus;
+}
+
+export interface UpdateTaskPayload {
+  title?: string;
+  description?: string;
+  assigneeId?: string | null;
+  dueDate?: string | null;
+  priority?: TaskPriority;
+  status?: TaskStatus;
+}
+
+export const tasksApi = {
+  async list(projectId: string): Promise<TaskSummary[]> {
+    const res = await apiFetch(`/projects/${projectId}/tasks`);
+    return parseJson<TaskSummary[]>(res);
+  },
+
+  async get(projectId: string, taskId: string): Promise<TaskDetail> {
+    const res = await apiFetch(`/projects/${projectId}/tasks/${taskId}`);
+    return parseJson<TaskDetail>(res);
+  },
+
+  async create(projectId: string, payload: CreateTaskPayload): Promise<TaskSummary> {
+    const res = await apiFetch(`/projects/${projectId}/tasks`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return parseJson<TaskSummary>(res);
+  },
+
+  async update(projectId: string, taskId: string, payload: UpdateTaskPayload): Promise<TaskSummary> {
+    const res = await apiFetch(`/projects/${projectId}/tasks/${taskId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+    return parseJson<TaskSummary>(res);
+  },
+
+  async remove(projectId: string, taskId: string): Promise<void> {
+    const res = await apiFetch(`/projects/${projectId}/tasks/${taskId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) await parseJson(res);
+  },
+};
