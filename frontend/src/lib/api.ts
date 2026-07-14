@@ -398,6 +398,17 @@ export interface ActivityLogEntry {
   actor: TaskUser;
 }
 
+export interface TaskAttachmentRecord {
+  id: string;
+  taskId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedBy: string;
+  createdAt: string;
+  uploader: TaskUser;
+}
+
 export interface TaskSummary {
   id: string;
   projectId: string;
@@ -417,6 +428,7 @@ export interface TaskSummary {
 
 export interface TaskDetail extends Omit<TaskSummary, '_count'> {
   activityLogs: ActivityLogEntry[];
+  attachments?: TaskAttachmentRecord[];
 }
 
 export interface CreateTaskPayload {
@@ -466,6 +478,42 @@ export const tasksApi = {
 
   async remove(projectId: string, taskId: string): Promise<void> {
     const res = await apiFetch(`/projects/${projectId}/tasks/${taskId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) await parseJson(res);
+  },
+};
+
+export const attachmentsApi = {
+  async list(taskId: string): Promise<TaskAttachmentRecord[]> {
+    const res = await apiFetch(`/tasks/${taskId}/attachments`);
+    return parseJson<TaskAttachmentRecord[]>(res);
+  },
+
+  async upload(taskId: string, file: File): Promise<TaskAttachmentRecord> {
+    await ensureFreshToken();
+    const form = new FormData();
+    form.append('file', file);
+    const headers: Record<string, string> = {};
+    const token = getAccessToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`${BASE}/tasks/${taskId}/attachments`, {
+      method: 'POST',
+      body: form,
+      headers,
+      credentials: 'include',
+    });
+
+    return parseJson<TaskAttachmentRecord>(res);
+  },
+
+  downloadUrl(attachmentId: string): string {
+    return `${BASE}/attachments/${attachmentId}/download`;
+  },
+
+  async remove(attachmentId: string): Promise<void> {
+    const res = await apiFetch(`/attachments/${attachmentId}`, {
       method: 'DELETE',
     });
     if (!res.ok) await parseJson(res);

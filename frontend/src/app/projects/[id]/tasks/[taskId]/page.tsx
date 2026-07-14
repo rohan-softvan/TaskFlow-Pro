@@ -6,8 +6,10 @@ import { useAuth } from '@/contexts/auth';
 import {
   projectsApi,
   tasksApi,
+  attachmentsApi,
   type ProjectMemberRecord,
   type TaskDetail,
+  type TaskAttachmentRecord,
   type TaskPriority,
   type TaskStatus,
 } from '@/lib/api';
@@ -52,9 +54,12 @@ export default function TaskDetailPage() {
 
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [members, setMembers] = useState<ProjectMemberRecord[]>([]);
+  const [attachments, setAttachments] = useState<TaskAttachmentRecord[]>([]);
   const [fetchError, setFetchError] = useState('');
   const [actionMsg, setActionMsg] = useState('');
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
 
   // Edit fields
   const [editTitle, setEditTitle] = useState('');
@@ -70,12 +75,14 @@ export default function TaskDetailPage() {
 
   const load = useCallback(async () => {
     try {
-      const [t, mems] = await Promise.all([
+      const [t, mems, atts] = await Promise.all([
         tasksApi.get(projectId, taskId),
         projectsApi.members(projectId).catch(() => [] as ProjectMemberRecord[]),
+        attachmentsApi.list(taskId).catch(() => [] as TaskAttachmentRecord[]),
       ]);
       setTask(t);
       setMembers(mems);
+      setAttachments(atts);
       setEditTitle(t.title);
       setEditStatus(t.status);
       setEditPriority(t.priority);
@@ -111,6 +118,38 @@ export default function TaskDetailPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleUploadAttachment(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError('');
+    try {
+      await attachmentsApi.upload(taskId, file);
+      await load();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Upload failed';
+      setUploadError(msg);
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  }
+
+  async function handleDeleteAttachment(attachmentId: string) {
+    try {
+      await attachmentsApi.remove(attachmentId);
+      await load();
+    } catch (e: unknown) {
+      setActionMsg(e instanceof Error ? e.message : 'Failed to delete attachment');
+    }
+  }
+
+  function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   if (isLoading || !user) {
@@ -271,6 +310,69 @@ export default function TaskDetailPage() {
               )}
             </div>
           </form>
+        </div>
+
+        {/* Attachments */}
+        <div className="mt-6 rounded-xl bg-white p-6 shadow-md">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-800">
+              Attachments ({attachments.length})
+            </h2>
+            {canEdit && (
+              <label className="cursor-pointer rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+                {uploading ? 'Uploading…' : '+ Upload'}
+                <input
+                  type="file"
+                  className="hidden"
+                  disabled={uploading}
+                  onChange={handleUploadAttachment}
+                />
+              </label>
+            )}
+          </div>
+
+          {uploadError && (
+            <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+              {uploadError}
+            </div>
+          )}
+
+          {attachments.length === 0 ? (
+            <p className="text-sm text-gray-400">No attachments yet.</p>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {attachments.map((att) => {
+                const isOwner = att.uploadedBy === user.id;
+                const canDelete = isOwner || user.role === 'Admin' || user.role === 'ProjectManager';
+                return (
+                  <li key={att.id} className="flex items-center gap-3 py-3">
+                    <span className="text-lg">📎</span>
+                    <div className="min-w-0 flex-1">
+                      <a
+                        href={attachmentsApi.downloadUrl(att.id)}
+                        className="truncate text-sm font-medium text-blue-600 hover:underline"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {att.fileName}
+                      </a>
+                      <div className="text-xs text-gray-400">
+                        {formatFileSize(att.sizeBytes)} · {att.uploader.fullName}
+                      </div>
+                    </div>
+                    {canDelete && (
+                      <button
+                        onClick={() => handleDeleteAttachment(att.id)}
+                        className="shrink-0 text-xs text-red-500 hover:text-red-700"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
 
         {/* Activity Log */}
