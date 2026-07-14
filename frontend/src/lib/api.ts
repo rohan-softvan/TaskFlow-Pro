@@ -482,6 +482,11 @@ export const tasksApi = {
     });
     if (!res.ok) await parseJson(res);
   },
+
+  async myTasks(): Promise<TaskSummary[]> {
+    const res = await apiFetch('/tasks/my');
+    return parseJson<TaskSummary[]>(res);
+  },
 };
 
 export interface SubtaskSummary {
@@ -632,6 +637,61 @@ export interface ExecutiveDashboardResponse {
   projectHealth: ProjectHealthEntry[];
   workloadBars: WorkloadBarEntry[];
 }
+
+export interface SearchProjectResult {
+  id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  type: 'project';
+}
+
+export interface SearchTaskResult {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  dueDate: string | null;
+  assigneeId: string | null;
+  type: 'task';
+}
+
+export interface SearchCommentResult {
+  id: string;
+  taskId: string;
+  body: string;
+  authorId: string;
+  createdAt: string;
+  type: 'comment';
+}
+
+export interface SearchResults {
+  projects: SearchProjectResult[];
+  tasks: SearchTaskResult[];
+  comments: SearchCommentResult[];
+}
+
+export const searchApi = {
+  async search(params: {
+    q: string;
+    assignee?: string;
+    status?: string;
+    priority?: string;
+    dueFrom?: string;
+    dueTo?: string;
+  }): Promise<SearchResults> {
+    const qs = new URLSearchParams({ q: params.q });
+    if (params.assignee) qs.set('assignee', params.assignee);
+    if (params.status) qs.set('status', params.status);
+    if (params.priority) qs.set('priority', params.priority);
+    if (params.dueFrom) qs.set('dueFrom', params.dueFrom);
+    if (params.dueTo) qs.set('dueTo', params.dueTo);
+    const res = await apiFetch(`/search?${qs.toString()}`);
+    return parseJson<SearchResults>(res);
+  },
+};
 
 export const dashboardApi = {
   async getExecutive(params?: {

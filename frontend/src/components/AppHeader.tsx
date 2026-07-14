@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth';
 import { profileApi } from '@/lib/api';
 import { Avatar } from './Avatar';
+import { SearchOverlay } from './SearchOverlay';
 
 /**
  * Global app header (Wireframe §1/§12): brand + avatar dropdown
@@ -15,8 +16,20 @@ export function AppHeader() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [fullName, setFullName] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   useEffect(() => {
     profileApi
@@ -41,6 +54,8 @@ export function AppHeader() {
   }
 
   return (
+    <>
+    {searchOpen && <SearchOverlay onClose={() => setSearchOpen(false)} />}
     <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3">
       <div className="flex items-center gap-6">
         <Link href="/dashboard" className="text-lg font-bold text-gray-900">
@@ -72,6 +87,17 @@ export function AppHeader() {
         </nav>
       </div>
 
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setSearchOpen(true)}
+          className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100"
+          title="Search (⌘K)"
+        >
+          <span>🔍</span>
+          <span className="hidden sm:inline">Search</span>
+          <kbd className="hidden rounded bg-gray-200 px-1 text-xs sm:inline">⌘K</kbd>
+        </button>
       <div className="relative" ref={menuRef}>
         <button
           type="button"
@@ -119,6 +145,8 @@ export function AppHeader() {
           </div>
         )}
       </div>
+      </div>
     </header>
+    </>
   );
 }
