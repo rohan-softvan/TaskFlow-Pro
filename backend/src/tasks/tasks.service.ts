@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ActivityAction, TaskStatus, UserRole } from '@prisma/client';
+import { ActivityAction, UserRole } from '@prisma/client';
 import { EventEmitter } from 'events';
 import { PrismaService } from '../prisma';
 import { CreateCommentDto } from './dto/create-comment.dto';
