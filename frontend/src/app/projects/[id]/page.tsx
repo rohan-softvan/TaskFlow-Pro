@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth';
 import {
@@ -14,16 +14,17 @@ import {
   type TaskSummary,
   type UserRecord,
 } from '@/lib/api';
+import CalendarView from '@/components/CalendarView';
+import KanbanView from '@/components/KanbanView';
+import ListViewComponent from '@/components/ListViewComponent';
+import TaskFiltersComponent, { type TaskFilters } from '@/components/TaskFilters';
+
+type ViewMode = 'list' | 'kanban' | 'calendar';
+const VIEW_PREF_KEY = 'taskflow:project:viewMode';
 
 const TASK_STATUS_OPTIONS: TaskStatus[] = ['ToDo', 'InProgress', 'InReview', 'Done'];
 const TASK_PRIORITY_OPTIONS: TaskPriority[] = ['Low', 'Medium', 'High', 'Critical'];
 
-const TASK_STATUS_STYLES: Record<TaskStatus, string> = {
-  ToDo: 'bg-gray-100 text-gray-700',
-  InProgress: 'bg-blue-100 text-blue-700',
-  InReview: 'bg-amber-100 text-amber-700',
-  Done: 'bg-green-100 text-green-700',
-};
 
 function taskStatusLabel(s: TaskStatus) {
   if (s === 'ToDo') return 'To Do';
@@ -66,6 +67,21 @@ export default function ProjectDetailPage() {
   const [newTaskStatus, setNewTaskStatus] = useState<TaskStatus>('ToDo');
   const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>('Medium');
   const [newTaskAssigneeId, setNewTaskAssigneeId] = useState('');
+
+  // View mode + filters
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(VIEW_PREF_KEY);
+      if (saved === 'list' || saved === 'kanban' || saved === 'calendar') return saved;
+    }
+    return 'list';
+  });
+  const [filters, setFilters] = useState<TaskFilters>({
+    status: '',
+    priority: '',
+    assigneeId: '',
+    dueDate: '',
+  });
 
   const canManage = user?.role === 'Admin' || user?.role === 'ProjectManager';
   const readOnly = project?.isArchived ?? false;
@@ -173,6 +189,26 @@ export default function ProjectDetailPage() {
       setActionMsg(e instanceof Error ? e.message : 'Failed to delete task');
     }
   }
+
+  async function handleStatusChange(taskId: string, newStatus: TaskStatus) {
+    await tasksApi.update(id, taskId, { status: newStatus });
+    await load();
+  }
+
+  function switchView(mode: ViewMode) {
+    setViewMode(mode);
+    if (typeof window !== 'undefined') localStorage.setItem(VIEW_PREF_KEY, mode);
+  }
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter(t => {
+      if (filters.status && t.status !== filters.status) return false;
+      if (filters.priority && t.priority !== filters.priority) return false;
+      if (filters.assigneeId && t.assigneeId !== filters.assigneeId) return false;
+      if (filters.dueDate && (t.dueDate?.slice(0, 10) ?? '') !== filters.dueDate) return false;
+      return true;
+    });
+  }, [tasks, filters]);
 
   if (isLoading || !user) {
     return (
@@ -382,18 +418,55 @@ export default function ProjectDetailPage() {
 
         {/* Tasks */}
         <div className="mt-6 rounded-xl bg-white p-6 shadow-md">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold text-gray-800">
               Tasks ({tasks.length})
             </h2>
-            {!readOnly && (
-              <button
-                onClick={() => setShowCreateTask((v) => !v)}
-                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
-              >
-                {showCreateTask ? 'Cancel' : '+ New Task'}
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {/* View switcher */}
+              <div className="flex rounded-md border border-gray-200 overflow-hidden text-sm">
+                {(['list', 'kanban', 'calendar'] as ViewMode[]).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => switchView(mode)}
+                    className={`px-3 py-1.5 capitalize font-medium transition-colors ${
+                      viewMode === mode
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+              {!readOnly && (
+                <button
+                  onClick={() => setShowCreateTask((v) => !v)}
+                  className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+                >
+                  {showCreateTask ? 'Cancel' : '+ New Task'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="mb-4">
+            <TaskFiltersComponent
+              filters={filters}
+              onChange={setFilters}
+              users={project.members.map(m => ({
+                id: m.userId,
+                email: m.user.email,
+                fullName: m.user.fullName,
+                role: m.user.role as UserRecord['role'],
+                department: m.user.department ?? null,
+                isActive: true,
+                mustResetPw: false,
+                createdAt: '',
+                updatedAt: '',
+              }))}
+            />
           </div>
 
           {showCreateTask && (
@@ -450,55 +523,20 @@ export default function ProjectDetailPage() {
             </form>
           )}
 
-          <ul className="divide-y">
-            {tasks.map((t) => (
-              <li key={t.id} className="flex items-center justify-between gap-4 py-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${TASK_STATUS_STYLES[t.status]}`}
-                    >
-                      {taskStatusLabel(t.status)}
-                    </span>
-                    <span className="text-xs text-gray-400">{t.priority}</span>
-                    <button
-                      onClick={() => router.push(`/projects/${id}/tasks/${t.id}`)}
-                      className="truncate text-sm font-medium text-gray-900 hover:text-blue-600 hover:underline text-left"
-                    >
-                      {t.title}
-                    </button>
-                  </div>
-                  {t.assignee && (
-                    <div className="mt-0.5 text-xs text-gray-500">
-                      Assigned to {t.assignee.fullName}
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {t.dueDate && (
-                    <span className="text-xs text-gray-400">{t.dueDate.slice(0, 10)}</span>
-                  )}
-                  <button
-                    onClick={() => router.push(`/projects/${id}/tasks/${t.id}`)}
-                    className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-600 hover:bg-gray-200"
-                  >
-                    View
-                  </button>
-                  {(canManage || t.createdBy === user?.id || t.assigneeId === user?.id) && !readOnly && (
-                    <button
-                      onClick={() => handleDeleteTask(t.id)}
-                      className="rounded bg-red-50 px-2 py-1 text-xs text-red-700 hover:bg-red-100"
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
-              </li>
-            ))}
-            {tasks.length === 0 && (
-              <li className="py-4 text-center text-sm text-gray-400">No tasks yet.</li>
-            )}
-          </ul>
+          {/* Task views */}
+          {viewMode === 'kanban' && (
+            <KanbanView tasks={filteredTasks} onStatusChange={handleStatusChange} />
+          )}
+          {viewMode === 'list' && (
+            <ListViewComponent
+              tasks={filteredTasks}
+              projectId={id}
+              onStatusChange={handleStatusChange}
+            />
+          )}
+          {viewMode === 'calendar' && (
+            <CalendarView tasks={filteredTasks} projectId={id} />
+          )}
         </div>
       </div>
     </main>

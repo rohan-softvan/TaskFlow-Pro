@@ -76,6 +76,12 @@ export function AppHeader() {
           >
             Projects
           </Link>
+          <Link
+            href="/my-tasks"
+            className="text-sm text-gray-600 hover:text-gray-900"
+          >
+            My Tasks
+          </Link>
           {user?.role === 'Admin' && (
             <Link
               href="/admin/users"
