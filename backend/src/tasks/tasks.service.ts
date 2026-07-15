@@ -12,9 +12,11 @@ import { CreateSubtaskDto } from './dto/create-subtask.dto';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 
-// Simple in-process event bus for CommentMention events (consumed by Slice 9)
+// Simple in-process event bus for notification events (consumed by Slice 9)
 export const taskEvents = new EventEmitter();
 export const COMMENT_MENTION_EVENT = 'CommentMention';
+export const TASK_ASSIGNED_EVENT = 'TaskAssigned';
+export const TASK_STATUS_CHANGED_EVENT = 'TaskStatusChanged';
 
 const TASK_USER_SELECT = {
   id: true,
@@ -96,6 +98,15 @@ export class TasksService {
           detail: { title: task.title },
         },
       });
+
+      if (task.assigneeId && task.assigneeId !== actorId) {
+        taskEvents.emit(TASK_ASSIGNED_EVENT, {
+          taskId: task.id,
+          projectId,
+          actorId,
+          assigneeId: task.assigneeId,
+        });
+      }
 
       return task;
     });
@@ -188,6 +199,27 @@ export class TasksService {
       }
 
       await Promise.all(logs);
+
+      // Emit notification events (consumed by NotificationsService)
+      if (dto.assigneeId !== undefined && dto.assigneeId !== task.assigneeId && dto.assigneeId) {
+        taskEvents.emit(TASK_ASSIGNED_EVENT, {
+          taskId,
+          projectId: task.projectId,
+          actorId,
+          assigneeId: dto.assigneeId,
+        });
+      }
+      if (dto.status !== undefined && dto.status !== task.status) {
+        taskEvents.emit(TASK_STATUS_CHANGED_EVENT, {
+          taskId,
+          projectId: task.projectId,
+          actorId,
+          newStatus: dto.status,
+          createdBy: task.createdBy,
+          assigneeId: updated.assigneeId,
+        });
+      }
+
       return updated;
     });
   }

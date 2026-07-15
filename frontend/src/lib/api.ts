@@ -708,3 +708,31 @@ export const dashboardApi = {
     return parseJson<ExecutiveDashboardResponse>(res);
   },
 };
+
+export interface NotificationRecord {
+  id: string;
+  type: string;
+  taskId: string | null;
+  projectId: string | null;
+  actorId: string | null;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export const notificationsApi = {
+  async list(): Promise<NotificationRecord[]> {
+    const res = await apiFetch('/notifications');
+    return parseJson<NotificationRecord[]>(res);
+  },
+
+  async markRead(id: string): Promise<void> {
+    const res = await apiFetch(`/notifications/${id}/read`, { method: 'PATCH' });
+    if (!res.ok) await parseJson(res);
+  },
+
+  async markAllRead(): Promise<void> {
+    const res = await apiFetch('/notifications/read-all', { method: 'POST' });
+    if (!res.ok) await parseJson(res);
+  },
+};

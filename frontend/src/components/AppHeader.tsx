@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth';
-import { profileApi } from '@/lib/api';
+import { notificationsApi, NotificationRecord, profileApi } from '@/lib/api';
 import { Avatar } from './Avatar';
 import { SearchOverlay } from './SearchOverlay';
 
@@ -18,7 +18,28 @@ export function AppHeader() {
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [fullName, setFullName] = useState<string | null>(null);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  const loadNotifications = useCallback(async () => {
+    try {
+      const data = await notificationsApi.list();
+      setNotifications(data);
+    } catch {
+      // silently ignore if not authenticated yet
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    loadNotifications();
+    const id = setInterval(loadNotifications, 30_000);
+    return () => clearInterval(id);
+  }, [user, loadNotifications]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -42,6 +63,9 @@ export function AppHeader() {
     function onClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setOpen(false);
+      }
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
       }
     }
     document.addEventListener('mousedown', onClick);
@@ -94,6 +118,75 @@ export function AppHeader() {
       </div>
 
       <div className="flex items-center gap-3">
+        {/* Notification bell */}
+        <div className="relative" ref={notifRef}>
+          <button
+            type="button"
+            onClick={() => setNotifOpen((v) => !v)}
+            className="relative rounded-full p-1.5 hover:bg-gray-100"
+            title="Notifications"
+            aria-label="Notifications"
+          >
+            <span className="text-lg leading-none">🔔</span>
+            {unreadCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {notifOpen && (
+            <div className="absolute right-0 z-20 mt-2 w-80 rounded-md border border-gray-200 bg-white shadow-lg">
+              <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2">
+                <span className="text-sm font-medium text-gray-700">Notifications</span>
+                {unreadCount > 0 && (
+                  <button
+                    type="button"
+                    className="text-xs text-blue-600 hover:underline"
+                    onClick={async () => {
+                      await notificationsApi.markAllRead();
+                      await loadNotifications();
+                    }}
+                  >
+                    Mark all read
+                  </button>
+                )}
+              </div>
+              <div className="max-h-96 overflow-y-auto">
+                {notifications.length === 0 ? (
+                  <p className="px-4 py-6 text-center text-sm text-gray-400">No notifications</p>
+                ) : (
+                  notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      className={`flex items-start gap-3 px-4 py-3 ${n.isRead ? 'bg-white' : 'bg-blue-50'} border-b border-gray-100 last:border-b-0`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-800">{n.message}</p>
+                        <p className="mt-0.5 text-xs text-gray-400">
+                          {new Date(n.createdAt).toLocaleString()}
+                        </p>
+                      </div>
+                      {!n.isRead && (
+                        <button
+                          type="button"
+                          className="shrink-0 text-xs text-blue-600 hover:underline"
+                          onClick={async () => {
+                            await notificationsApi.markRead(n.id);
+                            await loadNotifications();
+                          }}
+                        >
+                          Read
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
         <button
           type="button"
           onClick={() => setSearchOpen(true)}
