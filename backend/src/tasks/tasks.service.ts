@@ -27,6 +27,18 @@ const TASK_USER_SELECT = {
 export class TasksService {
   constructor(private prisma: PrismaService) {}
 
+  async findMyTasks(userId: string) {
+    return this.prisma.task.findMany({
+      where: { assigneeId: userId, parentTaskId: null },
+      include: {
+        assignee: { select: TASK_USER_SELECT },
+        creator: { select: TASK_USER_SELECT },
+        _count: { select: { subtasks: true } },
+      },
+      orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
   async findAll(projectId: string) {
     return this.prisma.task.findMany({
       where: { projectId, parentTaskId: null },
